@@ -88,6 +88,7 @@ func (smi *NvidiaSMI) pollNvidiaSMI() []byte {
 		"-q",
 		"-x",
 	)
+	hideConsole(cmd)
 	gs, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil
