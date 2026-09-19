@@ -11,6 +11,7 @@ import (
 	"github.com/shirou/gopsutil/v4/mem"
 
 	"github.com/nezhahq/agent/model"
+	"github.com/nezhahq/agent/pkg/monitor/gpu/vendor"
 )
 
 type monitorProbeSnapshot struct {
@@ -21,7 +22,7 @@ type monitorProbeSnapshot struct {
 	diskHost          hostStateFunc[uint64]
 	diskState         hostStateFunc[uint64]
 	gpuHost           hostStateFunc[[]string]
-	gpuState          hostStateFunc[[]float64]
+	gpuStat           hostStateFunc[[]vendor.GPUStat]
 	loadState         hostStateFunc[*psLoad.AvgStat]
 	nicState          hostStateFunc[[]uint64]
 	temperature       hostStateFunc[[]model.SensorTemperature]
@@ -38,8 +39,8 @@ type monitorMetricStateSnapshot struct {
 	cachedBootTime     time.Time
 	temperatureStat    []model.SensorTemperature
 	updateTempStatus   bool
-	hostAttempts       map[uint8]uint8
-	statAttempts       map[uint8]uint8
+	hostAttempts       map[uint8]probeState
+	statAttempts       map[uint8]probeState
 	retryTimes         int
 	failedStartedAt    time.Time
 	latestRetryAt      time.Time
@@ -72,7 +73,7 @@ func captureMonitorTestState() monitorTestStateSnapshot {
 			hostInfo: hostInfoProbe, virtualMemory: virtualMemoryProbe,
 			cpuHost: cpuHostProbe, cpuState: cpuStateProbe,
 			diskHost: diskHostProbe, diskState: diskStateProbe,
-			gpuHost: gpuHostProbe, gpuState: gpuStateProbe,
+			gpuHost: gpuHostProbe, gpuStat: gpuStatProbe,
 			loadState: loadStateProbe, nicState: nicStateProbe,
 			temperature: temperatureProbe, fetchIP: fetchIPProbe,
 			temperatureUpdate: temperatureUpdated,
@@ -106,7 +107,7 @@ func (s monitorTestStateSnapshot) restore() {
 	hostInfoProbe, virtualMemoryProbe = s.probes.hostInfo, s.probes.virtualMemory
 	cpuHostProbe, cpuStateProbe = s.probes.cpuHost, s.probes.cpuState
 	diskHostProbe, diskStateProbe = s.probes.diskHost, s.probes.diskState
-	gpuHostProbe, gpuStateProbe = s.probes.gpuHost, s.probes.gpuState
+	gpuHostProbe, gpuStatProbe = s.probes.gpuHost, s.probes.gpuStat
 	loadStateProbe, nicStateProbe = s.probes.loadState, s.probes.nicState
 	temperatureProbe, fetchIPProbe = s.probes.temperature, s.probes.fetchIP
 	temperatureUpdated = s.probes.temperatureUpdate
@@ -131,8 +132,8 @@ func TestMonitorTestStateSnapshotRestoresEveryBarrierGlobal(t *testing.T) {
 		lastUpdateNetStats: 15, cachedBootTime: time.Unix(16, 0),
 		temperatureStat:  []model.SensorTemperature{{Name: "seed", Temperature: 17}},
 		updateTempStatus: true,
-		hostAttempts:     map[uint8]uint8{CPU: 1, GPU: 2},
-		statAttempts:     map[uint8]uint8{CPU: 1, GPU: 2, Load: 3, Temperatures: 1},
+		hostAttempts:     map[uint8]probeState{CPU: {attempts: 1, retryAt: time.Unix(20, 0)}, GPU: {attempts: 2}},
+		statAttempts:     map[uint8]probeState{CPU: {attempts: 1}, GPU: {attempts: 2, retryAt: time.Unix(21, 0)}, Load: {attempts: 3}, Temperatures: {attempts: 1}},
 		retryTimes:       2, failedStartedAt: time.Unix(18, 0), latestRetryAt: time.Unix(19, 0),
 		geoQueryIP: "192.0.2.20", countryCode: "aa", geoIPChanged: false,
 	}
@@ -143,8 +144,8 @@ func TestMonitorTestStateSnapshotRestoresEveryBarrierGlobal(t *testing.T) {
 		lastUpdateNetStats: 95, cachedBootTime: time.Unix(96, 0),
 		temperatureStat:  []model.SensorTemperature{{Name: "mutated", Temperature: 97}},
 		updateTempStatus: false,
-		hostAttempts:     map[uint8]uint8{CPU: 3, GPU: 3},
-		statAttempts:     map[uint8]uint8{CPU: 3, GPU: 3, Load: 3, Temperatures: 3},
+		hostAttempts:     map[uint8]probeState{CPU: {attempts: 3}, GPU: {attempts: 3, retryAt: time.Unix(22, 0)}},
+		statAttempts:     map[uint8]probeState{CPU: {attempts: 3, retryAt: time.Unix(23, 0)}, GPU: {attempts: 3}, Load: {attempts: 3}, Temperatures: {attempts: 3}},
 		retryTimes:       4, failedStartedAt: time.Unix(98, 0), latestRetryAt: time.Unix(99, 0),
 		geoQueryIP: "2001:db8::99", countryCode: "zz", geoIPChanged: true,
 	})
